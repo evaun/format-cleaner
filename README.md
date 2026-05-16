@@ -72,14 +72,4 @@ open index.html
 
 ---
 
-## 部署到 Cloudflare Pages
-
-```bash
-npx wrangler pages deploy . --project-name=format-cleaner
-```
-
-或通过 GitHub Actions 绑定仓库实现自动部署。
-
----
-
 > Crafted by Zacky Zhang @ IGN China
