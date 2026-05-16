@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>格式清理工具</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .container {
+    width: 100%;
+    max-width: 640px;
+    background: #1a1a1a;
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+    text-align: center;
+    letter-spacing: -0.3px;
+  }
+  .subtitle {
+    font-size: 11px;
+    color: #555;
+    text-align: center;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+  }
+  /* 区域标签 */
+  .section-label {
+    font-size: 10px;
+    color: #444;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::before,
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #2a2a2a;
+  }
+  textarea {
+    width: 100%;
+    height: 260px;
+    background: #111;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 14px;
+    line-height: 1.7;
+    padding: 12px 14px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  textarea:focus { border-color: #555; box-shadow: 0 0 0 3px rgba(100,100,100,0.08); }
+  textarea::placeholder { color: #444; }
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .section-gap { margin-top: 14px; }
+  button {
+    flex: 1;
+    min-width: 120px;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: #fff;
+  }
+  .btn-primary { background: #fff; color: #0a0a0a; }
+  .btn-primary:hover {
+    background: #e8e8e8;
+    box-shadow: 0 0 14px rgba(255,255,255,0.15);
+  }
+  .btn-secondary { background: #2a2a2a; color: #ccc; }
+  .btn-secondary:hover {
+    background: #333;
+    box-shadow: 0 0 12px rgba(255,255,255,0.06);
+  }
+  /* 自定义 tooltip */
+  [data-tip] { position: relative; }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #e8e8e8;
+    color: #111;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    font-weight: 400;
+  }
+  [data-tip]:hover::after { opacity: 1; }
+  .btn-copy { background: #1a3d2a; color: #6fcf97; }
+  .btn-copy:hover {
+    background: #1e4d32;
+    box-shadow: 0 0 12px rgba(111,207,151,0.2);
+  }
+  .btn-copy.copied { color: #fff; }
+  .btn-danger { background: #2a1a1a; color: #f07070; }
+  .btn-danger:hover {
+    background: #3a2020;
+    box-shadow: 0 0 12px rgba(240,112,112,0.15);
+  }
+  .btn-danger.confirming { background: #5a2020; color: #ff9999; }
+  /* Word 上传区域 */
+  .drop-zone {
+    border: 2px dashed #2a2a2a;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover,
+  .drop-zone.dragover {
+    border-color: #555;
+    background: #1f1f1f;
+  }
+  .drop-zone.has-file {
+    border-color: #6fcf97;
+    border-style: solid;
+    background: #1a2a1f;
+  }
+  .drop-zone-icon {
+    font-size: 24px;
+    margin-bottom: 6px;
+  }
+  .drop-zone-text {
+    font-size: 13px;
+    color: #666;
+  }
+  .drop-zone.has-file .drop-zone-text {
+    color: #6fcf97;
+  }
+  .drop-zone-hint {
+    font-size: 11px;
+    color: #444;
+    margin-top: 4px;
+  }
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  /* Word 解析结果操作栏 */
+  .doc-actions {
+    display: none;
+    margin-top: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .doc-actions.show {
+    display: flex;
+  }
+  .doc-info {
+    font-size: 11px;
+    color: #6fcf97;
+    margin-top: 6px;
+    text-align: center;
+  }
+  /* 查找替换区域 */
+  .find-replace {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .fr-label {
+    font-size: 12px;
+    color: #555;
+    white-space: nowrap;
+  }
+  .fr-input {
+    flex: 1;
+    min-width: 80px;
+    height: 36px;
+    background: #111;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 13px;
+    padding: 0 10px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .fr-input:focus { border-color: #555; box-shadow: 0 0 0 3px rgba(100,100,100,0.08); }
+  .fr-input::placeholder { color: #444; }
+  .btn-fr {
+    height: 36px;
+    min-width: 70px;
+    flex: unset;
+    font-size: 12px;
+    background: #2a2a2a;
+    color: #ccc;
+    border-radius: 6px;
+  }
+  .btn-fr:hover { background: #333; box-shadow: 0 0 12px rgba(255,255,255,0.06); }
+  /* 分隔线 */
+  .divider {
+    border: none;
+    border-top: 1px solid #222;
+    margin-top: 18px;
+  }
+  .status {
+    margin-top: 12px;
+    font-size: 13px;
+    text-align: center;
+    height: 20px;
+    transition: color 0.2s;
+    color: #555;
+  }
+  .status.ok { color: #6fcf97; }
+  .status.err { color: #f07070; }
+  .status.info { color: #7ab8f5; }
+  .tagline {
+    margin-top: 16px;
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+  }
+  .dev-info {
+    margin-top: 6px;
+    font-size: 10px;
+    color: #333;
+    text-align: center;
+    letter-spacing: 0.3px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>格式清理工具</h1>
+  <div class="subtitle">FORMAT CLEANER</div>
+
+  <div class="section-label">Word 文档</div>
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-zone-icon">📄</div>
+    <div class="drop-zone-text" id="dropZoneText">拖拽 .docx 文件到此处，或点击选择</div>
+    <div class="drop-zone-hint" id="dropZoneHint">仅支持 .docx 格式（Word 2007+）</div>
+    <input type="file" id="fileInput" accept=".docx">
+  </div>
+  <div class="doc-actions" id="docActions">
+    <button class="btn-secondary" onclick="extractText()" data-tip="提取纯文本并填入下方文本框">📄 导出纯文本</button>
+    <button class="btn-secondary" onclick="downloadImages()" data-tip="将文档内所有图片打包为 zip 下载">🖼️ 下载图片包</button>
+  </div>
+  <div class="doc-info" id="docInfo"></div>
+
+  <hr class="divider">
+
+  <textarea id="input" placeholder="① 上传 Word 文档后点击「导出纯文本」&#10;② 或直接粘贴文字，点击下方按钮处理&#10;&#10;Shift+Delete 快速清除格式"></textarea>
+
+  <div class="section-gap">
+    <div class="section-label">格式处理</div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="cleanAndSpace()">🧹 清格式 + 加空格</button>
+      <button class="btn-secondary" onclick="cleanOnly()">✂️ 仅清格式</button>
+      <button class="btn-secondary" onclick="spaceOnly()">␣ 仅加空格</button>
+      <button class="btn-secondary" onclick="removeBlankLines()">↕️ 清除空行</button>
+    </div>
+  </div>
+
+  <div class="section-gap">
+    <div class="section-label">标点处理</div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="replacePunctuation()" data-tip="将中文引号（""）替换为「」">替换引号「」</button>
+      <button class="btn-secondary" onclick="replacePunctuationReverse()" data-tip="将「」还原为中文引号（""）">还原引号""</button>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-label" style="margin-top: 4px;">查找替换</div>
+  <div class="find-replace">
+    <span class="fr-label">查找</span>
+    <input class="fr-input" id="frFind" type="text" placeholder="输入要替换的内容">
+    <span class="fr-label">替换</span>
+    <input class="fr-input" id="frReplace" type="text" placeholder="替换为">
+    <button class="btn-fr" onclick="doFindReplace()">🔍 执行</button>
+  </div>
+
+  <div class="btn-row" style="margin-top: 12px;">
+    <button class="btn-copy" id="copyBtn" onclick="copyText()">📋 复制结果</button>
+    <button class="btn-danger" id="clearBtn" onclick="clearAll()">🗑️ 清空</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="tagline">Shift+Delete 快速清除格式</div>
+  <div class="dev-info">CRAFTED BY ZACKY ZHANG @ IGN CHINA</div>
+</div>
+
+<script>
+const textarea  = document.getElementById('input');
+const status    = document.getElementById('status');
+const copyBtn   = document.getElementById('copyBtn');
+const clearBtn  = document.getElementById('clearBtn');
+const dropZone  = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const docActions = document.getElementById('docActions');
+const docInfo   = document.getElementById('docInfo');
+const dropZoneText = document.getElementById('dropZoneText');
+const dropZoneHint = document.getElementById('dropZoneHint');
+let clearConfirm = false;
+let clearTimer = null;
+
+// ── 当前加载的 docx 数据 ──────────────────────────────────
+let currentDocxArrayBuffer = null;
+let currentDocxName = '';
+
+// ── 状态提示 ──────────────────────────────────────────────
+function showStatus(msg, type = '') {
+  status.textContent = msg;
+  status.className = 'status' + (type ? ' ' + type : '');
+  setTimeout(() => { status.textContent = ''; status.className = 'status'; }, 2500);
+}
+
+// ── 清除格式（保留段落空行）──────────────────────────────
+function cleanText(str) {
+  return str
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/?p[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&[a-z]+;/gi, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    // 保留单空行：先按行拆分，过滤空行，再用空行拼接
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s)
+    .join('\n\n');
+}
+
+// ── 中英文之间加空格（零宽断言版）─────────────────────────
+function addSpace(str) {
+  let result = str;
+  result = result.replace(/(?<=[\u4e00-\u9fa5])(?=[a-zA-Z0-9])/g, ' ');
+  result = result.replace(/(?<=[a-zA-Z0-9])(?=[\u4e00-\u9fa5])/g, ' ');
+  result = result.replace(/([\u4e00-\u9fa5])(——)([\u4e00-\u9fa5])/g, '$1 $2 $3');
+  return result;
+}
+
+// ── 标点替换：中文弯引号 "" → 「」 ─────────────────────────
+function replacePunctuation() {
+  textarea.value = textarea.value
+    .replace(/\u201c/g, '「')
+    .replace(/\u201d/g, '」');
+  showStatus('✓ 已替换引号', 'ok');
+}
+
+// ── 标点还原：方括号「」 → 中文弯引号 "" ───────────────────
+function replacePunctuationReverse() {
+  textarea.value = textarea.value
+    .replace(/「/g, '\u201c')
+    .replace(/」/g, '\u201d');
+  showStatus('✓ 已还原引号', 'ok');
+}
+
+// ── 查找替换 ──────────────────────────────────────────────
+function doFindReplace() {
+  const findVal    = document.getElementById('frFind').value;
+  const replaceVal = document.getElementById('frReplace').value;
+  if (!findVal) { showStatus('请先输入查找内容', 'err'); return; }
+  const regex = new RegExp(escapeRegex(findVal), 'g');
+  const count = (textarea.value.match(regex) || []).length;
+  if (count === 0) { showStatus('未找到匹配内容', 'err'); return; }
+  textarea.value = textarea.value.replace(regex, replaceVal);
+  showStatus('✓ 已替换 ' + count + ' 处', 'ok');
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cleanAndSpace() {
+  textarea.value = addSpace(cleanText(textarea.value));
+  showStatus('✓ 已处理', 'ok');
+}
+function cleanOnly() {
+  textarea.value = cleanText(textarea.value);
+  showStatus('✓ 已清除格式', 'ok');
+}
+function spaceOnly() {
+  textarea.value = addSpace(textarea.value);
+  showStatus('✓ 已加空格', 'ok');
+}
+function removeBlankLines() {
+  const before = textarea.value;
+  textarea.value = before.split('\n').map(s => s.trim()).filter(s => s).join('\n');
+  showStatus('✓ 已清除空行', 'ok');
+}
+
+// ── 清空（二次确认）────────────────────────────────────────
+function clearAll() {
+  if (!textarea.value) {
+    showStatus('文本框已经是空的', 'info');
+    return;
+  }
+  if (!clearConfirm) {
+    clearConfirm = true;
+    clearBtn.textContent = '⚠️ 确认清空？';
+    clearBtn.classList.add('confirming');
+    showStatus('再次点击清空按钮以确认', 'err');
+    clearTimer = setTimeout(() => {
+      clearConfirm = false;
+      clearBtn.textContent = '🗑️ 清空';
+      clearBtn.classList.remove('confirming');
+    }, 3000);
+    return;
+  }
+  clearTimeout(clearTimer);
+  clearConfirm = false;
+  textarea.value = '';
+  clearBtn.textContent = '🗑️ 清空';
+  clearBtn.classList.remove('confirming');
+  showStatus('✓ 已清空', 'ok');
+  textarea.focus();
+}
+
+function copyText() {
+  if (!textarea.value) { showStatus('文本框为空', 'err'); return; }
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    copyBtn.textContent = '✓ 已复制';
+    copyBtn.classList.add('copied');
+    setTimeout(() => { copyBtn.textContent = '📋 复制结果'; copyBtn.classList.remove('copied'); }, 1500);
+  }).catch(() => {
+    textarea.select();
+    document.execCommand('copy');
+    copyBtn.textContent = '✓ 已复制';
+    setTimeout(() => { copyBtn.textContent = '📋 复制结果'; }, 1500);
+  });
+}
+
+// ── Word 文档处理 ─────────────────────────────────────────
+
+// 拖拽交互
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => {
+  dropZone.classList.remove('dragover');
+});
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+// 点击选择
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleFile(file);
+});
+
+function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.docx')) {
+    showStatus('仅支持 .docx 格式', 'err');
+    return;
+  }
+  currentDocxName = file.name.replace(/\.docx$/i, '');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    currentDocxArrayBuffer = e.target.result;
+    docActions.classList.add('show');
+
+    // 快速统计图片数
+    JSZip.loadAsync(currentDocxArrayBuffer).then(zip => {
+      const imgFiles = Object.keys(zip.files).filter(
+        f => f.startsWith('word/media/')
+      );
+      const infoText = '✓ 已加载：' + currentDocxName + '.docx' +
+        (imgFiles.length ? ' · 包含 ' + imgFiles.length + ' 张图片' : ' · 无图片');
+      docInfo.textContent = infoText;
+      dropZoneText.textContent = '✓ ' + currentDocxName + '.docx';
+      dropZoneHint.textContent = '点击可重新选择文件';
+      dropZone.classList.add('has-file');
+      showStatus('✓ 文档已加载', 'ok');
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// 提取纯文本（图片位置用【图片N】占位）
+async function extractText() {
+  if (!currentDocxArrayBuffer) {
+    showStatus('请先上传文档', 'err');
+    return;
+  }
+  try {
+    const result = await mammoth.convertToHtml({ arrayBuffer: currentDocxArrayBuffer });
+    let html = result.value;
+    // 将 <img> 替换为【图片N】占位符（独立成段）
+    let imgIdx = 0;
+    html = html.replace(/<img[^>]*>/gi, () => '\n【图片' + (++imgIdx) + '】\n');
+    // HTML → 纯文本（保留段落结构）
+    let raw = html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<\/?p[^>]*>/gi, '')
+      .replace(/<div>/gi, '\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<h[1-6][^>]*>/gi, '\n')
+      .replace(/<\/h[1-6]>/gi, '\n')
+      .replace(/<li>/gi, '\n• ')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&[a-z]+;/gi, '');
+    // 按行拆分 → 过滤空行 → 用空行重新拼接（每段之间一个空行）
+    let text = raw.split('\n').map(s => s.trim()).filter(s => s).join('\n\n');
+    textarea.value = text;
+    showStatus('✓ 纯文本已导入' + (imgIdx ? '（含 ' + imgIdx + ' 处图片占位）' : ''), 'ok');
+  } catch (err) {
+    showStatus('解析失败：' + err.message, 'err');
+  }
+}
+
+// 打包下载图片
+async function downloadImages() {
+  if (!currentDocxArrayBuffer) {
+    showStatus('请先上传文档', 'err');
+    return;
+  }
+  try {
+    const zip = await JSZip.loadAsync(currentDocxArrayBuffer);
+    const imgFiles = Object.keys(zip.files).filter(
+      f => f.startsWith('word/media/') && !zip.files[f].dir
+    );
+    if (imgFiles.length === 0) {
+      showStatus('文档中没有图片', 'info');
+      return;
+    }
+    const imgZip = new JSZip();
+    for (const path of imgFiles) {
+      const data = await zip.files[path].async('arraybuffer');
+      const filename = path.split('/').pop();
+      imgZip.file(filename, data);
+    }
+    const blob = await imgZip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentDocxName + '_images.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+    showStatus('✓ 已下载 ' + imgFiles.length + ' 张图片', 'ok');
+  } catch (err) {
+    showStatus('图片提取失败：' + err.message, 'err');
+  }
+}
+
+// Shift+Delete / Shift+Backspace → 清除格式
+document.addEventListener('keydown', (e) => {
+  if (e.shiftKey && (e.key === 'Delete' || e.key === 'Backspace')) {
+    e.preventDefault();
+    textarea.value = cleanText(textarea.value);
+    showStatus('✓ Shift 清格式已执行', 'ok');
+  }
+});
+</script>
+</body>
+</html>
